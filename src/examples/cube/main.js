@@ -267,7 +267,7 @@ function draw() {
         colorAttachments: [
             {            
                 view: textureView.createView(),
-                loadValue: { r: 0.5, g: 0.5, b: 0.5, a: 1.0 },
+                loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
                 storeOp: "store",
             },
         ],

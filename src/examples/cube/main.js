@@ -34,6 +34,12 @@ fn main([[location(0)]] vColor: vec4<f32>) -> [[location(0)]] vec4<f32> {
     return vColor;
 }`;
 
+const ui = `
+<div class="message-box">
+    <p>Move cube using W A S D keys</p>
+    <button>Reset</button>
+</div>`;
+
 const cubeVertices = new Float32Array([
         // front
         -1, -1,  1,  
@@ -296,6 +302,17 @@ function draw() {
 }
 
 initInputs();
+
+function resetCube() {
+    cube.position[0] = 0;
+    cube.position[1] = 0;
+}
+
+const uiElement = document.createElement("div");
+uiElement.innerHTML = ui;
+uiElement.className = "ui-container";
+uiElement.querySelector("button").addEventListener("click", event => resetCube());
+document.body.appendChild(uiElement);
 
 function render() {
     update();

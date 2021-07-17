@@ -50,7 +50,7 @@ var degree = Math.PI / 180;
  * @param {Number} a Angle in Degrees
  */
 
-function toRadian(a) {
+export function toRadian(a) {
   return a * degree;
 }
 /**

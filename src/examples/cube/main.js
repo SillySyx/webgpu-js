@@ -1,13 +1,11 @@
-import { mat4, quat, vec3 } from '../../gl-matrix.js';
+import { mat4, quat, vec3, toRadian } from '../../gl-matrix.js';
 
 import { initCanvasAndContext, initDeviceAndSwapChain } from '../../webgpu/init.js';
 import { createShaderModule } from '../../webgpu/shaders.js';
 import { createUnmappedBuffer, bufferUsageFlags } from '../../webgpu/buffers.js';
 import { textureUsageFlags } from '../../webgpu/textures.js';
-import { createCamera } from '../../webgpu/camera.js';
+import { createLookAtViewMatrix, createProjectionMatrix, createViewMatrix } from '../../webgpu/camera.js';
 import { initInputs, isKeyPressed, isKeyReleased } from '../../webgpu/inputs.js';
-
-// https://github.com/jack1232/webgpu11/tree/0c2c805b1d764e365d7d4d43c4babe338ef1fd4a
 
 const vertexShaderCode = `
 [[block]] struct Uniforms {
@@ -38,6 +36,9 @@ const ui = `
 <div class="message-box">
     <p>Move cube using W A S D keys</p>
     <button>Reset</button>
+</div>
+<div class="message-box">
+    <p class="cube-cords"></p>
 </div>`;
 
 const cubeVertices = new Float32Array([
@@ -187,6 +188,7 @@ async function setup() {
         },
         primitive: {
             topology: "triangle-list",
+            cullMode: "back",
         },
         depthStencil: {
             format: "depth24plus",
@@ -205,12 +207,14 @@ async function setup() {
         colorBuffer: createUnmappedBuffer(device, cubeColors, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
     };
 
-    const createCameraInfo = {
-        aspectRatio: canvas.width / canvas.height,
-        position: vec3.fromValues(2, 2, 3),
-        lookAt: vec3.fromValues(0, 0, 0),
+    const aspectRatio = canvas.width / canvas.height;
+    const camera = {
+        position: vec3.fromValues(-2, -2, -5),
+        rotation: quat.fromEuler(quat.create(), 0, 0, 0),
+        viewMatrix: mat4.create(),
+        projectionMatrix: createProjectionMatrix(aspectRatio, (2 * Math.PI) / 5, 0.1, 100.0),
+        viewProjectionMatrix: mat4.create(),
     };
-    const camera = createCamera(createCameraInfo);
 
     const uniformBuffer = device.createBuffer({
         size: 64,
@@ -243,24 +247,59 @@ async function setup() {
 }
 
 const modelViewMatrix = mat4.create();
+
 const [device, swapChain, pipeline, uniformBuffer, uniformBindGroup, depthTexture, cube, camera] = await setup();
 
 function update() {
     if (isKeyPressed("a")) {
-        cube.position[0] -= 0.1;
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(0.1, 0, 0))
+        mat4.getTranslation(camera.position, cameraMatrix);
     }
     if (isKeyPressed("d")) {
-        cube.position[0] += 0.1;
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(-0.1, 0, 0))
+        mat4.getTranslation(camera.position, cameraMatrix);
     }
     if (isKeyPressed("w")) {
-        cube.position[1] += 0.1;
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(0, 0, 0.1))
+        mat4.getTranslation(camera.position, cameraMatrix);
     }
     if (isKeyPressed("s")) {
-        cube.position[1] -= 0.1;
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(0, 0, -0.1))
+        mat4.getTranslation(camera.position, cameraMatrix);
+    }
+    if (isKeyPressed(" ")) {
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(0, -0.1, 0))
+        mat4.getTranslation(camera.position, cameraMatrix);
+    }
+    if (isKeyPressed("Control")) {
+        const cameraMatrix = mat4.create();
+        mat4.fromRotationTranslation(cameraMatrix, camera.rotation, camera.position);
+        mat4.translate(cameraMatrix, cameraMatrix, vec3.fromValues(0, 0.1, 0))
+        mat4.getTranslation(camera.position, cameraMatrix);
+    }
+    if (isKeyPressed("ArrowLeft")) {
+        quat.rotateY(camera.rotation, camera.rotation, toRadian(3));
+    }
+    if (isKeyPressed("ArrowRight")) {
+        quat.rotateY(camera.rotation, camera.rotation, toRadian(-3));
     }
 
+    // camera.viewMatrix = createLookAtViewMatrix(camera.position, cube.position);
+    camera.viewMatrix = createViewMatrix(camera.rotation, camera.position);
+    mat4.multiply(camera.viewProjectionMatrix, camera.projectionMatrix, camera.viewMatrix);
+
     mat4.fromRotationTranslationScale(cube.matrix, cube.rotation, cube.position, cube.scale);
-    mat4.multiply(modelViewMatrix, camera.viewProjectionMatrix, cube.matrix);
+    mat4.multiply(modelViewMatrix, cube.matrix, camera.viewProjectionMatrix);
 
     device.queue.writeBuffer(uniformBuffer, 0, modelViewMatrix);
 }
@@ -304,8 +343,9 @@ function draw() {
 initInputs();
 
 function resetCube() {
-    cube.position[0] = 0;
-    cube.position[1] = 0;
+    camera.position[0] = -2;
+    camera.position[1] = -2;
+    camera.position[2] = -5;
 }
 
 const uiElement = document.createElement("div");
@@ -319,4 +359,4 @@ function render() {
     draw();
     requestAnimationFrame(render);
 }
-render();
+requestAnimationFrame(render);

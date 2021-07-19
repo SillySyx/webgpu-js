@@ -1,5 +1,3 @@
-import { mat4 } from "../gl-matrix.js";
-
 export function initCanvasAndContext(id) {
     const canvas = document.getElementById(id);
     if (!canvas) {
@@ -42,16 +40,4 @@ export async function initDeviceAndSwapChain(context, swapChainFormat) {
     }
 
     return [device, swapChain];
-}
-
-export function createShaderModule(device, code) {
-    const shaderModuleInfo = {
-        code: code,
-    };
-    const module = device.createShaderModule(shaderModuleInfo);
-    if (!module) {
-        throw "failed to create shader module";
-    }
-
-    return module;
 }

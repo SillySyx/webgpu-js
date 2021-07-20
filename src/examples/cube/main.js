@@ -36,9 +36,6 @@ const ui = `
 <div class="message-box">
     <p>Move cube using W A S D keys</p>
     <button>Reset</button>
-</div>
-<div class="message-box">
-    <p class="fps"></p>
 </div>`;
 
 const cubeVertices = new Float32Array([
@@ -199,8 +196,8 @@ async function setup() {
     const pipeline = device.createRenderPipeline(renderPipelineInfo);
 
     const cube = {
-        position: vec3.create(),
-        rotation: quat.create(),
+        position: vec3.fromValues(0, 0, 0),
+        rotation: vec3.fromValues(0, 0, 0),
         scale: vec3.fromValues(1, 1, 1),
         modelMatrix: mat4.create(),
         vertexBuffer: createUnmappedBuffer(device, cubeVertices, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
@@ -255,60 +252,59 @@ uiElement.className = "ui-container";
 uiElement.querySelector("button").addEventListener("click", event => resetCube());
 document.body.appendChild(uiElement);
 
-const fpsElement = uiElement.querySelector(".fps");
+// https://youtu.be/wFV9zPU_Cjg?t=764
+// https://www.youtube.com/watch?v=OWHqwbylX14
 
-function update(time) {
+function update() {
+    const cameraSpeed = vec3.fromValues(.1, .1, .1);
+    const [forward, backward, left, right, up, down] = vectorDirections(camera.rotation);
     if (isKeyPressed("a")) {
-        // https://youtu.be/wFV9zPU_Cjg?t=764
-        // https://www.youtube.com/watch?v=OWHqwbylX14
-
-        let deltaPosition = vec3.fromValues(0.1, 0, 0);
-        // rotateVec3(deltaPosition, camera.rotation);
-
-        vec3.add(camera.position, deltaPosition, camera.position);
+        vec3.multiply(left, left, cameraSpeed);
+        vec3.add(camera.position, camera.position, left);
     }
     if (isKeyPressed("d")) {
-        let deltaPosition = vec3.fromValues(-0.1, 0, 0);
-        // rotateVec3(deltaPosition, camera.rotation);
-
-        vec3.add(camera.position, deltaPosition, camera.position);
+        vec3.multiply(right, right, cameraSpeed);
+        vec3.add(camera.position, camera.position, right);
     }
     if (isKeyPressed("w")) {
-        vec3.add(camera.position, camera.position, vec3.fromValues(0, 0, 0.1));
+        vec3.multiply(forward, forward, cameraSpeed);
+        vec3.add(camera.position, camera.position, forward);
     }
     if (isKeyPressed("s")) {
-        vec3.add(camera.position, camera.position, vec3.fromValues(0, 0, -0.1));
+        vec3.multiply(backward, backward, cameraSpeed);
+        vec3.add(camera.position, camera.position, backward);
     }
     if (isKeyPressed(" ")) {
-        vec3.add(camera.position, camera.position, vec3.fromValues(0, 0.1, 0));
+        vec3.multiply(up, up, cameraSpeed);
+        vec3.add(camera.position, camera.position, up);
     }
     if (isKeyPressed("Control")) {
-        vec3.add(camera.position, camera.position, vec3.fromValues(0, -0.1, 0));
+        vec3.multiply(down, down, cameraSpeed);
+        vec3.add(camera.position, camera.position, down);
     }
     if (isKeyPressed("ArrowLeft")) {
-        camera.rotation[1] += 0.01;
+        camera.rotation[1] += 0.1;
     }
     if (isKeyPressed("ArrowRight")) {
-        camera.rotation[1] -= 0.01;
+        camera.rotation[1] -= 0.1;
     }
     if (isKeyPressed("ArrowUp")) {
+        camera.rotation[0] += 0.1;
     }
     if (isKeyPressed("ArrowDown")) {
+        camera.rotation[0] -= 0.1;
     }
-}
-
-function updateUi(time) {
-    fpsElement.innerHTML = `${camera.position[0]},${camera.position[1]},${camera.position[2]}<br/>${camera.rotation[0]},${camera.rotation[1]},${camera.rotation[2]}`;
-}
+}   
 
 function draw() {
-    camera.viewMatrix = createFirstPersonViewMatrix(camera.rotation, camera.position);
     cube.modelMatrix = transformationMatrix(cube.position, cube.rotation, cube.scale);
+    camera.viewMatrix = transformationMatrix(camera.position, camera.rotation, vec3.fromValues(1, 1, 1));
 
     const modelViewProjectionMatrix = mat4.create();
     mat4.multiply(modelViewProjectionMatrix, cube.modelMatrix, modelViewProjectionMatrix);
     mat4.multiply(modelViewProjectionMatrix, camera.viewMatrix, modelViewProjectionMatrix);
     mat4.multiply(modelViewProjectionMatrix, camera.projectionMatrix, modelViewProjectionMatrix);
+
     device.queue.writeBuffer(uniformBuffer, 0, modelViewProjectionMatrix);
 
     const commandEncoder = device.createCommandEncoder();
@@ -358,15 +354,9 @@ function resetCube() {
     camera.rotation[2] = 0;
 }
 
-let prevTime = Date.now();
 function render() {
-    const time = Date.now() - prevTime;
-
-    update(time);
-    // updateUi(time);
+    update();
     draw();
-
-    prevTime = time;
     requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
@@ -385,10 +375,20 @@ function transformationMatrix(position, rotation, scale) {
     return matrix;
 }
 
-function rotateVec3(vec, rotation) {
-    const origin = vec3.fromValues(0, 0, 0);
+function vectorDirections(rotation) {
+    const yaw = rotation[1];
+    const forward = vec3.fromValues(Math.sin(yaw), .0, Math.cos(yaw));
+    const right = vec3.fromValues(forward[2], .0, -forward[0]);
+    const up = vec3.fromValues(.0, -1.0, .0);
 
-    vec3.rotateX(vec, vec, origin, rotation[0]);
-    vec3.rotateY(vec, vec, origin, rotation[1]);
-    vec3.rotateZ(vec, vec, origin, rotation[2]);
+    const left = vec3.create();
+    vec3.negate(left, right);
+
+    const backward = vec3.create();
+    vec3.negate(backward, forward);
+
+    const down = vec3.create();
+    vec3.negate(down, up);
+
+    return [forward, backward, left, right, up, down];
 }

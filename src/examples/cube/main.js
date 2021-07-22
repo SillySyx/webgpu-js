@@ -34,8 +34,8 @@ fn main([[location(0)]] vColor: vec4<f32>) -> [[location(0)]] vec4<f32> {
 
 const ui = `
 <div class="message-box">
-    <p>Move cube using W A S D keys</p>
-    <button>Reset</button>
+    <p>Move camera using W,S,A,D,Space,Ctrl and Arrow keys</p>
+    <button>Reset camera</button>
 </div>`;
 
 const cubeVertices = new Float32Array([
@@ -206,10 +206,10 @@ async function setup() {
 
     const aspectRatio = canvas.width / canvas.height;
     const camera = {
-        position: vec3.fromValues(0, 0, -5),
-        rotation: vec3.fromValues(0, 0, 0),
+        position: vec3.fromValues(-3, -1.5, -3),
+        rotation: vec3.fromValues(toRadian(15), toRadian(-45), 0),
         viewMatrix: mat4.create(),
-        projectionMatrix: mat4.perspective(mat4.create(), toRadian(90), aspectRatio, 0.1, 100.0),
+        projectionMatrix: mat4.perspective(mat4.create(), toRadian(70), aspectRatio, 0.1, 100.0),
         viewProjectionMatrix: mat4.create(),
     };
 
@@ -252,47 +252,56 @@ uiElement.className = "ui-container";
 uiElement.querySelector("button").addEventListener("click", event => resetCube());
 document.body.appendChild(uiElement);
 
-// https://youtu.be/wFV9zPU_Cjg?t=764
-// https://www.youtube.com/watch?v=OWHqwbylX14
-
 function update() {
+    const rotateSpeed = .5;
+    if (isKeyPressed("ArrowLeft")) {
+        camera.rotation[1] -= toRadian(5 * rotateSpeed);
+    }
+    if (isKeyPressed("ArrowRight")) {
+        camera.rotation[1] += toRadian(5 * rotateSpeed);
+    }
+    if (isKeyPressed("ArrowUp")) {
+        camera.rotation[0] += toRadian(5 * rotateSpeed);
+    }
+    if (isKeyPressed("ArrowDown")) {
+        camera.rotation[0] -= toRadian(5 * rotateSpeed);
+    }
+    
     const cameraSpeed = vec3.fromValues(.1, .1, .1);
-    const [forward, backward, left, right, up, down] = vectorDirections(camera.rotation);
+    const cameraSpaceVectors = objectSpaceVectors(camera.rotation);
+
     if (isKeyPressed("a")) {
-        vec3.multiply(left, left, cameraSpeed);
+        const left = vec3.create();
+        vec3.multiply(left, cameraSpaceVectors.x, cameraSpeed);
         vec3.add(camera.position, camera.position, left);
     }
     if (isKeyPressed("d")) {
+        const right = vec3.create();
+        vec3.negate(right, cameraSpaceVectors.x);
         vec3.multiply(right, right, cameraSpeed);
         vec3.add(camera.position, camera.position, right);
     }
     if (isKeyPressed("w")) {
-        vec3.multiply(forward, forward, cameraSpeed);
+        const forward = vec3.create();
+        vec3.multiply(forward, cameraSpaceVectors.z, cameraSpeed);
         vec3.add(camera.position, camera.position, forward);
     }
     if (isKeyPressed("s")) {
+        const backward = vec3.create();
+        vec3.negate(backward, cameraSpaceVectors.z);
         vec3.multiply(backward, backward, cameraSpeed);
         vec3.add(camera.position, camera.position, backward);
     }
     if (isKeyPressed(" ")) {
+        const up = vec3.create();
+        vec3.negate(up, cameraSpaceVectors.y);
         vec3.multiply(up, up, cameraSpeed);
         vec3.add(camera.position, camera.position, up);
     }
     if (isKeyPressed("Control")) {
-        vec3.multiply(down, down, cameraSpeed);
+        const down = vec3.create();
+        vec3.multiply(down, cameraSpaceVectors.y, cameraSpeed);
         vec3.add(camera.position, camera.position, down);
-    }
-    if (isKeyPressed("ArrowLeft")) {
-        camera.rotation[1] += 0.1;
-    }
-    if (isKeyPressed("ArrowRight")) {
-        camera.rotation[1] -= 0.1;
-    }
-    if (isKeyPressed("ArrowUp")) {
-        camera.rotation[0] += 0.1;
-    }
-    if (isKeyPressed("ArrowDown")) {
-        camera.rotation[0] -= 0.1;
     }
 }   
 
@@ -346,12 +355,8 @@ function draw() {
 initInputs();
 
 function resetCube() {
-    camera.position[0] = 0;
-    camera.position[1] = 0;
-    camera.position[2] = 0;
-    camera.rotation[0] = 0;
-    camera.rotation[1] = 0;
-    camera.rotation[2] = 0;
+    camera.position = vec3.fromValues(-3, -1.5, -3);
+    camera.rotation = vec3.fromValues(toRadian(15), toRadian(-45), 0);
 }
 
 function render() {
@@ -363,32 +368,47 @@ requestAnimationFrame(render);
 
 
 
-function transformationMatrix(position, rotation, scale) {
-    const matrix = mat4.create();
-
-    mat4.translate(matrix, matrix, position);
-    mat4.rotateX(matrix, matrix, rotation[0]);
-    mat4.rotateY(matrix, matrix, rotation[1]);
-    mat4.rotateZ(matrix, matrix, rotation[2]);
-    mat4.scale(matrix, matrix, scale);
-
-    return matrix;
+function getRotationAxes() {
+    return {
+        x: vec3.fromValues(1.0, 0.0, 0.0), // pitch
+        y: vec3.fromValues(0.0, 1.0, 0.0), // yaw
+        z: vec3.fromValues(0.0, 0.0, 1.0), // roll
+    };
 }
 
-function vectorDirections(rotation) {
-    const yaw = rotation[1];
-    const forward = vec3.fromValues(Math.sin(yaw), .0, Math.cos(yaw));
-    const right = vec3.fromValues(forward[2], .0, -forward[0]);
-    const up = vec3.fromValues(.0, -1.0, .0);
+function transformationMatrix(position, rotation, scale) {
+    const axes = getRotationAxes();
 
-    const left = vec3.create();
-    vec3.negate(left, right);
+    let rotationMatrix = mat4.create();
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[0], axes.x);
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[1], axes.y);
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[2], axes.z);
 
-    const backward = vec3.create();
-    vec3.negate(backward, forward);
+    let translationMatrix = mat4.create();
+    mat4.translate(translationMatrix, translationMatrix, position);
 
-    const down = vec3.create();
-    vec3.negate(down, up);
+    let scaleMatrix = mat4.create();
+    mat4.scale(scaleMatrix, scaleMatrix, scale);
 
-    return [forward, backward, left, right, up, down];
+    let worldMatrix = mat4.create();
+    mat4.multiply(worldMatrix, worldMatrix, rotationMatrix);
+    mat4.multiply(worldMatrix, worldMatrix, translationMatrix);
+    mat4.multiply(worldMatrix, worldMatrix, scaleMatrix);
+
+    return worldMatrix;
+}
+
+function objectSpaceVectors(rotation) {
+    const axes = getRotationAxes();
+
+    let rotationMatrix = mat4.create();
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[0], axes.x);
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[1], axes.y);
+    mat4.rotate(rotationMatrix, rotationMatrix, rotation[2], axes.z);
+
+    return {
+        x: vec3.fromValues(rotationMatrix[0], rotationMatrix[4], rotationMatrix[8]),
+        y: vec3.fromValues(rotationMatrix[1], rotationMatrix[5], rotationMatrix[9]),
+        z: vec3.fromValues(rotationMatrix[2], rotationMatrix[6], rotationMatrix[10]),
+    };
 }

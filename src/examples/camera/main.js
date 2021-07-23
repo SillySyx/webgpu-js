@@ -265,7 +265,7 @@ const depthTexture = device.createTexture({
 
 
 
-// Game logic
+// GAME LOGIC
 
 function resetCube() {
     camera.position = vec3.fromValues(-3, -1.5, -3);
@@ -275,6 +275,7 @@ function resetCube() {
 function update() {
     const rotateSpeed = .5;
     const maxRotation = toRadian(360);
+    
     if (isKeyPressed("ArrowLeft")) {
         camera.rotation[1] -= toRadian(5 * rotateSpeed);
 
@@ -345,7 +346,7 @@ function update() {
 
 
 
-// Render logic
+// RENDER LOGIC
 
 
 function updateUniformBuffers(modelMatrix, viewMatrix, projectionMatrix) {

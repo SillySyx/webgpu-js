@@ -2,9 +2,13 @@ const keysPressed = {};
 
 export function initInputs() {
     document.addEventListener("keydown", event => {
+        event.preventDefault();
+        event.stopPropagation();
         keysPressed[event.key] = true;
     });
     document.addEventListener("keyup", event => {
+        event.preventDefault();
+        event.stopPropagation();
         keysPressed[event.key] = false;
     });
 }

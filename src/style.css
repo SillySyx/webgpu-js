@@ -10,15 +10,22 @@ html, body {
 }
 
 .ui-container {
+    user-select: none;
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "left center right"
+}
+
+.ui-container .ui-container-left {
+    grid-area: left;
 }
 
 .ui-container .message-box {
-    display: inline-block;
     margin: 1rem;
     padding: 1rem;
     border-left: .22rem solid darkorange;

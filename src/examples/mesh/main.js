@@ -5,7 +5,8 @@ import { createShaderModule } from '../../webgpu/shaders.js';
 import { createUnmappedBuffer, bufferUsageFlags } from '../../webgpu/buffers.js';
 import { textureUsageFlags } from '../../webgpu/textures.js';
 import { objectSpaceVectors, transformationMatrix } from '../../webgpu/transforms.js';
-import { initInputs, isKeyPressed } from '../../webgpu/inputs.js';
+import { initInputs, isKeyPressed, getGamepadAxes } from '../../webgpu/inputs.js';
+import { calcFrameTime } from '../../webgpu/timeframe.js';
 
 // RESOURCES
 
@@ -44,6 +45,9 @@ const ui = `
         <p>Position & rotation</p>
         <p class="position"></p>
         <p class="rotation"></p>
+    </div>
+    <div class="message-box">
+        <p class="fps"></p>
     </div>
     <div class="message-box">
         <button>Reset camera</button>
@@ -160,6 +164,7 @@ uiElement.querySelector("button").addEventListener("click", () => resetCube());
 document.body.appendChild(uiElement);
 const positionElement = uiElement.querySelector(".position");
 const rotationElement = uiElement.querySelector(".rotation");
+const fpsElement = uiElement.querySelector(".fps");
 
 
 const [canvas, context] = initCanvasAndContext("webgpu-canvas");
@@ -272,72 +277,111 @@ function resetCube() {
     camera.rotation = vec3.fromValues(toRadian(15), toRadian(-45), 0);
 }
 
-function update() {
-    const rotateSpeed = .5;
-    const maxRotation = toRadian(360);
+function update(frameTime) {
+    const frameStep = frameTime / 1000;
+    const cameraSpeed = 10 * frameStep;
+    const rotateSpeed = 90 * frameStep;
     
+    const maxRotation = toRadian(360);
+
     if (isKeyPressed("ArrowLeft")) {
-        camera.rotation[1] -= toRadian(5 * rotateSpeed);
+        camera.rotation[1] -= toRadian(rotateSpeed);
 
         if (camera.rotation[1] < -maxRotation)
             camera.rotation[1] += maxRotation;
     }
     if (isKeyPressed("ArrowRight")) {
-        camera.rotation[1] += toRadian(5 * rotateSpeed);
+        camera.rotation[1] += toRadian(rotateSpeed);
         
         if (camera.rotation[1] > maxRotation)
             camera.rotation[1] -= maxRotation;
     }
     if (isKeyPressed("ArrowUp")) {
-        camera.rotation[0] += toRadian(5 * rotateSpeed);
+        camera.rotation[0] += toRadian(rotateSpeed);
         
         if (camera.rotation[0] > maxRotation)
             camera.rotation[0] -= maxRotation;
     }
     if (isKeyPressed("ArrowDown")) {
-        camera.rotation[0] -= toRadian(5 * rotateSpeed);
+        camera.rotation[0] -= toRadian(rotateSpeed);
 
         if (camera.rotation[0] < -maxRotation)
             camera.rotation[0] += maxRotation;
     }
-    
-    const cameraSpeed = vec3.fromValues(.1, .1, .1);
+
+    const [gamepadConnected, axes] = getGamepadAxes(0);
+    if (gamepadConnected && axes[3] != 0) {
+        camera.rotation[1] += toRadian(axes[3] * rotateSpeed);
+    }
+    if (gamepadConnected && axes[4] != 0) {
+        camera.rotation[0] += toRadian(axes[4] * rotateSpeed);
+    }
+
+    const cameraSpeedVectors = vec3.fromValues(cameraSpeed, cameraSpeed, cameraSpeed);
     const cameraSpaceVectors = objectSpaceVectors(camera.rotation);
 
     if (isKeyPressed("a")) {
         const left = vec3.create();
-        vec3.multiply(left, cameraSpaceVectors.x, cameraSpeed);
+        vec3.multiply(left, cameraSpaceVectors.x, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, left);
     }
     if (isKeyPressed("d")) {
         const right = vec3.create();
         vec3.negate(right, cameraSpaceVectors.x);
-        vec3.multiply(right, right, cameraSpeed);
+        vec3.multiply(right, right, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, right);
     }
     if (isKeyPressed("w")) {
         const forward = vec3.create();
-        vec3.multiply(forward, cameraSpaceVectors.z, cameraSpeed);
+        vec3.multiply(forward, cameraSpaceVectors.z, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, forward);
     }
     if (isKeyPressed("s")) {
         const backward = vec3.create();
         vec3.negate(backward, cameraSpaceVectors.z);
-        vec3.multiply(backward, backward, cameraSpeed);
+        vec3.multiply(backward, backward, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, backward);
     }
     if (isKeyPressed(" ")) {
         const up = vec3.create();
         vec3.negate(up, cameraSpaceVectors.y);
-        vec3.multiply(up, up, cameraSpeed);
+        vec3.multiply(up, up, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, up);
     }
     if (isKeyPressed("Control")) {
         const down = vec3.create();
-        vec3.multiply(down, cameraSpaceVectors.y, cameraSpeed);
+        vec3.multiply(down, cameraSpaceVectors.y, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, down);
     }
     
+    if (gamepadConnected && axes[0] != 0) {
+        const cameraSpeedFactor = axes[0] * cameraSpeed;
+        const right = vec3.create();
+        vec3.negate(right, cameraSpaceVectors.x);
+        vec3.multiply(right, right, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
+        vec3.add(camera.position, camera.position, right);
+    }
+    if (gamepadConnected && axes[1] != 0) {
+        const cameraSpeedFactor = axes[1] * cameraSpeed;
+        const backward = vec3.create();
+        vec3.negate(backward, cameraSpaceVectors.z);
+        vec3.multiply(backward, backward, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
+        vec3.add(camera.position, camera.position, backward);
+    }
+    if (gamepadConnected && axes[2] > 0) {
+        const cameraSpeedFactor = axes[2] * cameraSpeed;
+        const down = vec3.create();
+        vec3.multiply(down, cameraSpaceVectors.y, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
+        vec3.add(camera.position, camera.position, down);
+    }
+    if (gamepadConnected && axes[5] > 0) {
+        const cameraSpeedFactor = axes[5] * cameraSpeed;
+        const up = vec3.create();
+        vec3.negate(up, cameraSpaceVectors.y);
+        vec3.multiply(up, up, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
+        vec3.add(camera.position, camera.position, up);
+    }
+
     cube.modelMatrix = transformationMatrix(cube.position, cube.rotation, cube.scale);
     camera.viewMatrix = transformationMatrix(camera.position, camera.rotation, vec3.fromValues(1, 1, 1));
 
@@ -394,15 +438,20 @@ function draw() {
     ]);
 }
 
+let frameTime = calcFrameTime(Date.now());
 function render() {
-    update();
+    frameTime = calcFrameTime(frameTime.time);
+
+    update(frameTime.ms);
     draw();
+
     requestAnimationFrame(render);
 }
 
 setInterval(() => {
     positionElement.innerHTML = `${camera.position[0]} ${camera.position[1]} ${camera.position[2]}`;
     rotationElement.innerHTML = `${camera.rotation[0]} ${camera.rotation[1]} ${camera.rotation[2]}`;
+    fpsElement.innerHTML = `${Math.round(1000 / frameTime.ms)}fps ${frameTime.ms}ms`;
 }, 250);
 
 initInputs();

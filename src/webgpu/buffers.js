@@ -20,5 +20,6 @@ export function createUnmappedBuffer(device, data, usageFlags) {
 
     new Float32Array(buffer.getMappedRange()).set(data);
     buffer.unmap();
+    buffer.length = data.length;
     return buffer;
 }

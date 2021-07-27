@@ -7,52 +7,14 @@ import { textureUsageFlags } from '../../webgpu/textures.js';
 import { objectSpaceVectors, transformationMatrix } from '../../webgpu/transforms.js';
 import { initInputs, isKeyPressed, getGamepadAxes } from '../../webgpu/inputs.js';
 import { calcFrameTime } from '../../webgpu/timeframe.js';
+import { loadResource } from '../../webgpu/resources.js';
+
+
 
 // RESOURCES
 
-const vertexShaderCode = `
-[[block]] struct Uniforms {
-    mvpMatrix : mat4x4<f32>;
-};
-
-[[binding(0), group(0)]] var<uniform> uniforms : Uniforms;
-struct Output {
-    [[builtin(position)]] Position : vec4<f32>;
-    [[location(0)]] vColor : vec4<f32>;
-};
-
-[[stage(vertex)]]
-fn main([[location(0)]] pos: vec4<f32>, [[location(1)]] color: vec4<f32>) -> Output {
-    var output: Output;
-    output.Position = uniforms.mvpMatrix * pos;
-    output.vColor = color;
-    return output;
-}`;
-
-const fragmentShaderCode = `
-[[stage(fragment)]]
-fn main([[location(0)]] vColor: vec4<f32>) -> [[location(0)]] vec4<f32> {
-    return vColor;
-}`;
-
-const ui = `
-<div class="ui-container-left">
-    <div class="message-box">
-        <p>Move camera using</p>
-        <p>W,S,A,D,Space,Ctrl and Arrow keys</p>
-    </div>
-    <div class="message-box">
-        <p>Position & rotation</p>
-        <p class="position"></p>
-        <p class="rotation"></p>
-    </div>
-    <div class="message-box">
-        <p class="fps"></p>
-    </div>
-    <div class="message-box">
-        <button>Reset camera</button>
-    </div>
-</div>`;
+const shaderCode = await loadResource("examples/camera/shader.wsgl");
+const ui = await loadResource("examples/camera/ui.html");
 
 const cubeVertices = new Float32Array([
     // front
@@ -155,6 +117,7 @@ const cubeColors = new Float32Array([
 ]);
 
 
+
 // SETUP
 
 const uiElement = document.createElement("div");
@@ -172,18 +135,18 @@ const [canvas, context] = initCanvasAndContext("webgpu-canvas");
 const swapChainFormat = "bgra8unorm";
 const [device, swapChain] = await initDeviceAndSwapChain(context, swapChainFormat);
 
-const vertexShaderModule = createShaderModule(device, vertexShaderCode);
-const fragmentShaderModule = createShaderModule(device, fragmentShaderCode);
+const shaderModule = createShaderModule(device, shaderCode);
 
 const renderPipelineInfo = {
     vertex: {
-        module: vertexShaderModule,
-        entryPoint: "main",
+        module: shaderModule,
+        entryPoint: "vMain",
         buffers: [
             {
-                arrayStride: 12,
+                arrayStride: 3 * 4,
                 attributes: [
                     {
+                        // position
                         shaderLocation: 0,
                         format: "float32x3",
                         offset: 0,
@@ -191,9 +154,10 @@ const renderPipelineInfo = {
                 ],
             },
             {
-                arrayStride: 12,
+                arrayStride: 3 * 4,
                 attributes: [
                     {
+                        // color
                         shaderLocation: 1,
                         format: "float32x3",
                         offset: 0,
@@ -203,8 +167,8 @@ const renderPipelineInfo = {
         ],
     },
     fragment: {
-        module: fragmentShaderModule,
-        entryPoint: "main",
+        module: shaderModule,
+        entryPoint: "fMain",
         targets: [
             {
                 format: swapChainFormat,
@@ -213,7 +177,6 @@ const renderPipelineInfo = {
     },
     primitive: {
         topology: "triangle-list",
-        cullMode: "back",
     },
     depthStencil: {
         format: "depth24plus",
@@ -234,15 +197,15 @@ const cube = {
 
 const aspectRatio = canvas.width / canvas.height;
 const camera = {
-    position: vec3.fromValues(-3, -1.5, -3),
-    rotation: vec3.fromValues(toRadian(15), toRadian(-45), 0),
+    position: vec3.fromValues(0, 0, -5),
+    rotation: vec3.fromValues(0, 0, 0),
     viewMatrix: mat4.create(),
     projectionMatrix: mat4.perspective(mat4.create(), toRadian(70), aspectRatio, 0.1, 100.0),
     viewProjectionMatrix: mat4.create(),
 };
 
 const uniformBuffer = device.createBuffer({
-    size: 64,
+    size: 16 * 4, // mat4
     usage: bufferUsageFlags.UNIFORM | bufferUsageFlags.COPY_DST,
 });
 
@@ -252,8 +215,6 @@ const uniformBindGroup = device.createBindGroup({
         binding: 0,
         resource: {
             buffer: uniformBuffer,
-            offset: 0,
-            size: 64,
         },
     }],
 });
@@ -273,8 +234,8 @@ const depthTexture = device.createTexture({
 // GAME LOGIC
 
 function resetCube() {
-    camera.position = vec3.fromValues(-3, -1.5, -3);
-    camera.rotation = vec3.fromValues(toRadian(15), toRadian(-45), 0);
+    camera.position = vec3.fromValues(0, 0, -5);
+    camera.rotation = vec3.fromValues(0, 0, 0);
 }
 
 function update(frameTime) {
@@ -384,8 +345,6 @@ function update(frameTime) {
 
     cube.modelMatrix = transformationMatrix(cube.position, cube.rotation, cube.scale);
     camera.viewMatrix = transformationMatrix(camera.position, camera.rotation, vec3.fromValues(1, 1, 1));
-
-    updateUniformBuffers(cube.modelMatrix, camera.viewMatrix, camera.projectionMatrix);
 }   
 
 
@@ -419,10 +378,12 @@ function draw() {
             depthLoadValue: 1.0,
             depthStoreOp: "store",
             stencilLoadValue: 0,
-            stencilStoreOp: "store"
+            stencilStoreOp: "store",
         },
     };
     const renderPass = commandEncoder.beginRenderPass(renderPassInfo);
+
+    updateUniformBuffers(cube.modelMatrix, camera.viewMatrix, camera.projectionMatrix);
 
     renderPass.setPipeline(pipeline);
     renderPass.setVertexBuffer(0, cube.vertexBuffer);

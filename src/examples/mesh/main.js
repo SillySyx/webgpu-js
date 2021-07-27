@@ -2,157 +2,21 @@ import { mat4, vec3, toRadian } from '../../gl-matrix.js';
 
 import { initCanvasAndContext, initDeviceAndSwapChain } from '../../webgpu/init.js';
 import { createShaderModule } from '../../webgpu/shaders.js';
-import { createUnmappedBuffer, bufferUsageFlags } from '../../webgpu/buffers.js';
+import { bufferUsageFlags } from '../../webgpu/buffers.js';
 import { textureUsageFlags } from '../../webgpu/textures.js';
 import { objectSpaceVectors, transformationMatrix } from '../../webgpu/transforms.js';
 import { initInputs, isKeyPressed, getGamepadAxes } from '../../webgpu/inputs.js';
 import { calcFrameTime } from '../../webgpu/timeframe.js';
+import { loadResource } from '../../webgpu/resources.js';
+import { getWaveFrontModel, parseWaveFrontObject } from '../../webgpu/wavefront.js';
+
+
 
 // RESOURCES
 
-const vertexShaderCode = `
-[[block]] struct Uniforms {
-    mvpMatrix : mat4x4<f32>;
-};
-
-[[binding(0), group(0)]] var<uniform> uniforms : Uniforms;
-struct Output {
-    [[builtin(position)]] Position : vec4<f32>;
-    [[location(0)]] vColor : vec4<f32>;
-};
-
-[[stage(vertex)]]
-fn main([[location(0)]] pos: vec4<f32>, [[location(1)]] color: vec4<f32>) -> Output {
-    var output: Output;
-    output.Position = uniforms.mvpMatrix * pos;
-    output.vColor = color;
-    return output;
-}`;
-
-const fragmentShaderCode = `
-[[stage(fragment)]]
-fn main([[location(0)]] vColor: vec4<f32>) -> [[location(0)]] vec4<f32> {
-    return vColor;
-}`;
-
-const ui = `
-<div class="ui-container-left">
-    <div class="message-box">
-        <p>Move camera using</p>
-        <p>W,S,A,D,Space,Ctrl and Arrow keys</p>
-    </div>
-    <div class="message-box">
-        <p>Position & rotation</p>
-        <p class="position"></p>
-        <p class="rotation"></p>
-    </div>
-    <div class="message-box">
-        <p class="fps"></p>
-    </div>
-    <div class="message-box">
-        <button>Reset camera</button>
-    </div>
-</div>`;
-
-const cubeVertices = new Float32Array([
-    // front
-    -1, -1, 1,
-    1, -1, 1,
-    1, 1, 1,
-    1, 1, 1,
-    -1, 1, 1,
-    -1, -1, 1,
-
-    // right
-    1, -1, 1,
-    1, -1, -1,
-    1, 1, -1,
-    1, 1, -1,
-    1, 1, 1,
-    1, -1, 1,
-
-    // back
-    -1, -1, -1,
-    -1, 1, -1,
-    1, 1, -1,
-    1, 1, -1,
-    1, -1, -1,
-    -1, -1, -1,
-
-    // left
-    -1, -1, 1,
-    -1, 1, 1,
-    -1, 1, -1,
-    -1, 1, -1,
-    -1, -1, -1,
-    -1, -1, 1,
-
-    // top
-    -1, 1, 1,
-    1, 1, 1,
-    1, 1, -1,
-    1, 1, -1,
-    -1, 1, -1,
-    -1, 1, 1,
-
-    // bottom
-    -1, -1, 1,
-    -1, -1, -1,
-    1, -1, -1,
-    1, -1, -1,
-    1, -1, 1,
-    -1, -1, 1,
-]);
-
-const cubeColors = new Float32Array([
-    // front - blue
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-
-    // right - red
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-
-    //back - yellow
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-
-    //left - aqua
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-
-    // top - green
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-
-    // bottom - fuchsia
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-]);
+const modelObj = await loadResource("examples/mesh/model.obj");
+const shaderCode = await loadResource("examples/mesh/shader.wsgl");
+const ui = await loadResource("examples/camera/ui.html");
 
 
 // SETUP
@@ -166,45 +30,34 @@ const positionElement = uiElement.querySelector(".position");
 const rotationElement = uiElement.querySelector(".rotation");
 const fpsElement = uiElement.querySelector(".fps");
 
-
 const [canvas, context] = initCanvasAndContext("webgpu-canvas");
 
 const swapChainFormat = "bgra8unorm";
 const [device, swapChain] = await initDeviceAndSwapChain(context, swapChainFormat);
 
-const vertexShaderModule = createShaderModule(device, vertexShaderCode);
-const fragmentShaderModule = createShaderModule(device, fragmentShaderCode);
+const shaderModule = createShaderModule(device, shaderCode);
 
 const renderPipelineInfo = {
     vertex: {
-        module: vertexShaderModule,
-        entryPoint: "main",
+        module: shaderModule,
+        entryPoint: "vMain",
         buffers: [
             {
-                arrayStride: 12,
+                arrayStride: 3 * 4, // vec3
                 attributes: [
                     {
+                        // position
                         shaderLocation: 0,
-                        format: "float32x3",
                         offset: 0,
-                    },
-                ],
-            },
-            {
-                arrayStride: 12,
-                attributes: [
-                    {
-                        shaderLocation: 1,
-                        format: "float32x3",
-                        offset: 0,
-                    },
-                ],
+                        format: "float32x3"
+                    }
+                ]
             },
         ],
     },
     fragment: {
-        module: fragmentShaderModule,
-        entryPoint: "main",
+        module: shaderModule,
+        entryPoint: "fMain",
         targets: [
             {
                 format: swapChainFormat,
@@ -213,7 +66,6 @@ const renderPipelineInfo = {
     },
     primitive: {
         topology: "triangle-list",
-        cullMode: "back",
     },
     depthStencil: {
         format: "depth24plus",
@@ -223,39 +75,34 @@ const renderPipelineInfo = {
 };
 const pipeline = device.createRenderPipeline(renderPipelineInfo);
 
-const cube = {
-    position: vec3.fromValues(0, 0, 0),
-    rotation: vec3.fromValues(0, 0, 0),
-    scale: vec3.fromValues(1, 1, 1),
-    modelMatrix: mat4.create(),
-    vertexBuffer: createUnmappedBuffer(device, cubeVertices, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-    colorBuffer: createUnmappedBuffer(device, cubeColors, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-};
+parseWaveFrontObject(device, modelObj);
+
+const model = getWaveFrontModel("Model");
 
 const aspectRatio = canvas.width / canvas.height;
 const camera = {
-    position: vec3.fromValues(-3, -1.5, -3),
-    rotation: vec3.fromValues(toRadian(15), toRadian(-45), 0),
+    position: vec3.fromValues(0, 0, -5),
+    rotation: vec3.fromValues(0, 0, 0),
     viewMatrix: mat4.create(),
     projectionMatrix: mat4.perspective(mat4.create(), toRadian(70), aspectRatio, 0.1, 100.0),
     viewProjectionMatrix: mat4.create(),
 };
 
 const uniformBuffer = device.createBuffer({
-    size: 64,
+    size: 16 * 4, // mat4
     usage: bufferUsageFlags.UNIFORM | bufferUsageFlags.COPY_DST,
 });
 
 const uniformBindGroup = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
-    entries: [{
-        binding: 0,
-        resource: {
-            buffer: uniformBuffer,
-            offset: 0,
-            size: 64,
+    entries: [
+        {
+            binding: 0,
+            resource: {
+                buffer: uniformBuffer,
+            },
         },
-    }],
+    ],
 });
 
 const depthTexture = device.createTexture({
@@ -273,15 +120,15 @@ const depthTexture = device.createTexture({
 // GAME LOGIC
 
 function resetCube() {
-    camera.position = vec3.fromValues(-3, -1.5, -3);
-    camera.rotation = vec3.fromValues(toRadian(15), toRadian(-45), 0);
+    camera.position = vec3.fromValues(0, 0, -5);
+    camera.rotation = vec3.fromValues(0, 0, 0);
 }
 
 function update(frameTime) {
     const frameStep = frameTime / 1000;
     const cameraSpeed = 10 * frameStep;
     const rotateSpeed = 90 * frameStep;
-    
+
     const maxRotation = toRadian(360);
 
     if (isKeyPressed("ArrowLeft")) {
@@ -292,13 +139,13 @@ function update(frameTime) {
     }
     if (isKeyPressed("ArrowRight")) {
         camera.rotation[1] += toRadian(rotateSpeed);
-        
+
         if (camera.rotation[1] > maxRotation)
             camera.rotation[1] -= maxRotation;
     }
     if (isKeyPressed("ArrowUp")) {
         camera.rotation[0] += toRadian(rotateSpeed);
-        
+
         if (camera.rotation[0] > maxRotation)
             camera.rotation[0] -= maxRotation;
     }
@@ -353,7 +200,7 @@ function update(frameTime) {
         vec3.multiply(down, cameraSpaceVectors.y, cameraSpeedVectors);
         vec3.add(camera.position, camera.position, down);
     }
-    
+
     if (gamepadConnected && axes[0] != 0) {
         const cameraSpeedFactor = axes[0] * cameraSpeed;
         const right = vec3.create();
@@ -382,24 +229,22 @@ function update(frameTime) {
         vec3.add(camera.position, camera.position, up);
     }
 
-    cube.modelMatrix = transformationMatrix(cube.position, cube.rotation, cube.scale);
+    model.modelMatrix = transformationMatrix(model.position, model.rotation, model.scale);
     camera.viewMatrix = transformationMatrix(camera.position, camera.rotation, vec3.fromValues(1, 1, 1));
-
-    updateUniformBuffers(cube.modelMatrix, camera.viewMatrix, camera.projectionMatrix);
-}   
+}
 
 
 
 // RENDER LOGIC
 
 
-function updateUniformBuffers(modelMatrix, viewMatrix, projectionMatrix) {
+function updateModelViewProjectionMatrix(modelMatrix, viewMatrix, projectionMatrix) {
     const modelViewProjectionMatrix = mat4.create();
     mat4.multiply(modelViewProjectionMatrix, modelMatrix, modelViewProjectionMatrix);
     mat4.multiply(modelViewProjectionMatrix, viewMatrix, modelViewProjectionMatrix);
     mat4.multiply(modelViewProjectionMatrix, projectionMatrix, modelViewProjectionMatrix);
 
-    device.queue.writeBuffer(uniformBuffer, 0, modelViewProjectionMatrix);
+    return modelViewProjectionMatrix;
 }
 
 function draw() {
@@ -424,13 +269,17 @@ function draw() {
     };
     const renderPass = commandEncoder.beginRenderPass(renderPassInfo);
 
+    const modelViewProjectionMatrix = updateModelViewProjectionMatrix(model.modelMatrix, camera.viewMatrix, camera.projectionMatrix);
+    device.queue.writeBuffer(uniformBuffer, 0, modelViewProjectionMatrix);
+
     renderPass.setPipeline(pipeline);
-    renderPass.setVertexBuffer(0, cube.vertexBuffer);
-    renderPass.setVertexBuffer(1, cube.colorBuffer);
+    renderPass.setVertexBuffer(0, model.buffers.positions);
+    renderPass.setVertexBuffer(1, model.buffers.normals);
+    renderPass.setVertexBuffer(2, model.buffers.textureCoords);
+    renderPass.setIndexBuffer(model.buffers.index, "uint32");
     renderPass.setBindGroup(0, uniformBindGroup);
 
-    const numberOfVertices = cubeVertices.length / 3;
-    renderPass.draw(numberOfVertices);
+    renderPass.drawIndexed(model.buffers.index.length);
     renderPass.endPass();
 
     device.queue.submit([

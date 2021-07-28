@@ -11,7 +11,7 @@ export const bufferUsageFlags = {
     QUERY_RESOLVE: 0x0200,
 };
 
-export function createUnmappedBuffer(device, data, usageFlags) {
+export function createUnmappedFloat32Buffer(device, data, usageFlags) {
     const buffer = device.createBuffer({
         size: data.byteLength,
         usage: usageFlags,
@@ -19,6 +19,19 @@ export function createUnmappedBuffer(device, data, usageFlags) {
     });
 
     new Float32Array(buffer.getMappedRange()).set(data);
+    buffer.unmap();
+    buffer.length = data.length;
+    return buffer;
+}
+
+export function createUnmappedUint32Buffer(device, data, usageFlags) {
+    const buffer = device.createBuffer({
+        size: data.byteLength,
+        usage: usageFlags,
+        mappedAtCreation: true,
+    });
+
+    new Uint32Array(buffer.getMappedRange()).set(data);
     buffer.unmap();
     buffer.length = data.length;
     return buffer;

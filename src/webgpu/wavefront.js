@@ -1,4 +1,4 @@
-import { createUnmappedBuffer, bufferUsageFlags } from '../webgpu/buffers.js';
+import { createUnmappedFloat32Buffer, createUnmappedUint32Buffer, bufferUsageFlags } from '../webgpu/buffers.js';
 import { vec3, mat4 } from '../../gl-matrix.js';
 
 const objects = {};
@@ -33,7 +33,7 @@ export function parseWaveFrontObject(device, obj) {
         if (line.startsWith("f ")) {
             for (const face of line.substr(2).split(" ")) {
                 const [vertexIndex, textureIndex, normalIndex] = face.split("/");
-                indices.push(Number.parseInt(vertexIndex));
+                indices.push(Number.parseInt(vertexIndex) - 1);
             }
         }
     }
@@ -42,10 +42,10 @@ export function parseWaveFrontObject(device, obj) {
         throw "No name for wavefront object";
 
     objects[objName] = {
-        positions: createUnmappedBuffer(device, new Float32Array(vPositions), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-        textureCoords: createUnmappedBuffer(device, new Float32Array(vTextureCoords), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-        normals: createUnmappedBuffer(device, new Float32Array(vNormals), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-        indices: createUnmappedBuffer(device, new Uint32Array(indices), bufferUsageFlags.INDEX | bufferUsageFlags.COPY_DST),
+        positions: createUnmappedFloat32Buffer(device, new Float32Array(vPositions), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
+        textureCoords: createUnmappedFloat32Buffer(device, new Float32Array(vTextureCoords), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
+        normals: createUnmappedFloat32Buffer(device, new Float32Array(vNormals), bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
+        indices: createUnmappedUint32Buffer(device, new Uint32Array(indices), bufferUsageFlags.INDEX | bufferUsageFlags.COPY_DST),
     };
 }
 

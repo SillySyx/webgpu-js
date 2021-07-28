@@ -2,120 +2,21 @@ import { mat4, vec3, toRadian } from '../../gl-matrix.js';
 
 import { initCanvasAndContext, initDeviceAndSwapChain } from '../../webgpu/init.js';
 import { createShaderModule } from '../../webgpu/shaders.js';
-import { createUnmappedBuffer, bufferUsageFlags } from '../../webgpu/buffers.js';
+import { createUnmappedFloat32Buffer, bufferUsageFlags } from '../../webgpu/buffers.js';
 import { textureUsageFlags } from '../../webgpu/textures.js';
 import { objectSpaceVectors, transformationMatrix } from '../../webgpu/transforms.js';
 import { initInputs, isKeyPressed, getGamepadAxes } from '../../webgpu/inputs.js';
 import { calcFrameTime } from '../../webgpu/timeframe.js';
-import { loadResource } from '../../webgpu/resources.js';
+import { loadResource, loadResourceAsJson } from '../../webgpu/resources.js';
 
 
 
 // RESOURCES
 
-const shaderCode = await loadResource("examples/camera/shader.wsgl");
+const shaderCode = await loadResource("examples/camera/shader.wgsl");
 const ui = await loadResource("examples/camera/ui.html");
-
-const cubeVertices = new Float32Array([
-    // front
-    -1, -1, 1,
-    1, -1, 1,
-    1, 1, 1,
-    1, 1, 1,
-    -1, 1, 1,
-    -1, -1, 1,
-
-    // right
-    1, -1, 1,
-    1, -1, -1,
-    1, 1, -1,
-    1, 1, -1,
-    1, 1, 1,
-    1, -1, 1,
-
-    // back
-    -1, -1, -1,
-    -1, 1, -1,
-    1, 1, -1,
-    1, 1, -1,
-    1, -1, -1,
-    -1, -1, -1,
-
-    // left
-    -1, -1, 1,
-    -1, 1, 1,
-    -1, 1, -1,
-    -1, 1, -1,
-    -1, -1, -1,
-    -1, -1, 1,
-
-    // top
-    -1, 1, 1,
-    1, 1, 1,
-    1, 1, -1,
-    1, 1, -1,
-    -1, 1, -1,
-    -1, 1, 1,
-
-    // bottom
-    -1, -1, 1,
-    -1, -1, -1,
-    1, -1, -1,
-    1, -1, -1,
-    1, -1, 1,
-    -1, -1, 1,
-]);
-
-const cubeColors = new Float32Array([
-    // front - blue
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-    0, 0, 1,
-
-    // right - red
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-    1, 0, 0,
-
-    //back - yellow
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-    1, 1, 0,
-
-    //left - aqua
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-    0, 1, 1,
-
-    // top - green
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-    0, 1, 0,
-
-    // bottom - fuchsia
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-    1, 0, 1,
-]);
-
+const vertices = await loadResourceAsJson("examples/camera/cube.vertices");
+const colors = await loadResourceAsJson("examples/camera/cube.colors");
 
 
 // SETUP
@@ -177,6 +78,7 @@ const renderPipelineInfo = {
     },
     primitive: {
         topology: "triangle-list",
+        cullMode: 'back',
     },
     depthStencil: {
         format: "depth24plus",
@@ -191,8 +93,8 @@ const cube = {
     rotation: vec3.fromValues(0, 0, 0),
     scale: vec3.fromValues(1, 1, 1),
     modelMatrix: mat4.create(),
-    vertexBuffer: createUnmappedBuffer(device, cubeVertices, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
-    colorBuffer: createUnmappedBuffer(device, cubeColors, bufferUsageFlags.VERTEX | bufferUsageFlags.COPY_DST),
+    vertexBuffer: createUnmappedFloat32Buffer(device, new Float32Array(vertices), bufferUsageFlags.VERTEX),
+    colorBuffer: createUnmappedFloat32Buffer(device, new Float32Array(colors), bufferUsageFlags.VERTEX),
 };
 
 const aspectRatio = canvas.width / canvas.height;
@@ -258,16 +160,16 @@ function update(frameTime) {
             camera.rotation[1] -= maxRotation;
     }
     if (isKeyPressed("ArrowUp")) {
-        camera.rotation[0] += toRadian(rotateSpeed);
-        
-        if (camera.rotation[0] > maxRotation)
-            camera.rotation[0] -= maxRotation;
-    }
-    if (isKeyPressed("ArrowDown")) {
         camera.rotation[0] -= toRadian(rotateSpeed);
 
         if (camera.rotation[0] < -maxRotation)
             camera.rotation[0] += maxRotation;
+    }
+    if (isKeyPressed("ArrowDown")) {
+        camera.rotation[0] += toRadian(rotateSpeed);
+        
+        if (camera.rotation[0] > maxRotation)
+            camera.rotation[0] -= maxRotation;
     }
 
     const [gamepadConnected, axes] = getGamepadAxes(0);
@@ -390,7 +292,7 @@ function draw() {
     renderPass.setVertexBuffer(1, cube.colorBuffer);
     renderPass.setBindGroup(0, uniformBindGroup);
 
-    const numberOfVertices = cubeVertices.length / 3;
+    const numberOfVertices = vertices.length / 3;
     renderPass.draw(numberOfVertices);
     renderPass.endPass();
 

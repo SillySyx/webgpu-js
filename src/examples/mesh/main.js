@@ -15,7 +15,7 @@ import { getWaveFrontModel, parseWaveFrontObject } from '../../webgpu/wavefront.
 // RESOURCES
 
 const modelObj = await loadResource("examples/mesh/model.obj");
-const shaderCode = await loadResource("examples/mesh/shader.wsgl");
+const shaderCode = await loadResource("examples/mesh/shader.wgsl");
 const ui = await loadResource("examples/camera/ui.html");
 
 
@@ -50,8 +50,30 @@ const renderPipelineInfo = {
                         shaderLocation: 0,
                         offset: 0,
                         format: "float32x3"
-                    }
-                ]
+                    },
+                ],
+            },
+            {
+                arrayStride: 3 * 4, // vec3
+                attributes: [
+                    {
+                        // normal
+                        shaderLocation: 1,
+                        offset: 0,
+                        format: "float32x3"
+                    },
+                ],
+            },
+            {
+                arrayStride: 2 * 4, // vec2
+                attributes: [
+                    {
+                        // uv
+                        shaderLocation: 2,
+                        offset: 0,
+                        format: "float32x2"
+                    },
+                ],
             },
         ],
     },
@@ -66,6 +88,7 @@ const renderPipelineInfo = {
     },
     primitive: {
         topology: "triangle-list",
+        cullMode: 'back',
     },
     depthStencil: {
         format: "depth24plus",
@@ -144,16 +167,16 @@ function update(frameTime) {
             camera.rotation[1] -= maxRotation;
     }
     if (isKeyPressed("ArrowUp")) {
-        camera.rotation[0] += toRadian(rotateSpeed);
-
-        if (camera.rotation[0] > maxRotation)
-            camera.rotation[0] -= maxRotation;
-    }
-    if (isKeyPressed("ArrowDown")) {
         camera.rotation[0] -= toRadian(rotateSpeed);
 
         if (camera.rotation[0] < -maxRotation)
             camera.rotation[0] += maxRotation;
+    }
+    if (isKeyPressed("ArrowDown")) {
+        camera.rotation[0] += toRadian(rotateSpeed);
+        
+        if (camera.rotation[0] > maxRotation)
+            camera.rotation[0] -= maxRotation;
     }
 
     const [gamepadConnected, axes] = getGamepadAxes(0);

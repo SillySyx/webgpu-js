@@ -4,12 +4,14 @@ import { initCanvasAndContext, initDeviceAndSwapChain } from '../../webgpu/init.
 import { createShaderModule } from '../../webgpu/shaders.js';
 import { bufferUsageFlags } from '../../webgpu/buffers.js';
 import { textureUsageFlags } from '../../webgpu/textures.js';
-import { objectSpaceVectors, transformationMatrix } from '../../webgpu/transforms.js';
-import { initInputs, isKeyPressed, getGamepadAxes } from '../../webgpu/inputs.js';
+import { KeyboardInputComponent } from '../../webgpu/keyboard.js';
 import { calcFrameTime } from '../../webgpu/timeframe.js';
 import { loadResource } from '../../webgpu/resources.js';
-import { getWaveFrontModel, parseWaveFrontObject } from '../../webgpu/wavefront.js';
-
+import { parseWaveFrontObject } from '../../webgpu/wavefront.js';
+import { UiComponent } from '../../webgpu/ui.js';
+import { EntityComponent } from '../../webgpu/entity.js';
+import { FirstPersonCameraComponent } from '../../webgpu/camera.js';
+import { GameState } from '../../webgpu/state.js';
 
 
 // RESOURCES
@@ -20,6 +22,9 @@ const ui = await loadResource("examples/camera/ui.html");
 
 
 // SETUP
+
+const state = new GameState();
+
 
 const uiElement = document.createElement("div");
 uiElement.innerHTML = ui;
@@ -98,18 +103,13 @@ const renderPipelineInfo = {
 };
 const pipeline = device.createRenderPipeline(renderPipelineInfo);
 
-parseWaveFrontObject(device, modelObj);
+const [modelId, modelBuffers] = parseWaveFrontObject(device, modelObj);
+const model = new EntityComponent();
+model.id = modelId;
+model.buffers = modelBuffers;
 
-const model = getWaveFrontModel("Model");
+state.entityComponents.push(model);
 
-const aspectRatio = canvas.width / canvas.height;
-const camera = {
-    position: vec3.fromValues(0, 0, -5),
-    rotation: vec3.fromValues(0, 0, 0),
-    viewMatrix: mat4.create(),
-    projectionMatrix: mat4.perspective(mat4.create(), toRadian(70), aspectRatio, 0.1, 100.0),
-    viewProjectionMatrix: mat4.create(),
-};
 
 const uniformBuffer = device.createBuffer({
     size: 16 * 4, // mat4
@@ -139,6 +139,17 @@ const depthTexture = device.createTexture({
 });
 
 
+const camera = new FirstPersonCameraComponent();
+camera.id = "fpscam";
+camera.aspectRatio = canvas.width / canvas.height;
+camera.position = vec3.fromValues(0, 0, -5);
+camera.updateProjectionMatrix();
+state.cameraComponents.push(camera);
+
+const keyboard = new KeyboardInputComponent();
+keyboard.init();
+state.keyboard = keyboard;
+
 
 // GAME LOGIC
 
@@ -146,116 +157,6 @@ function resetCube() {
     camera.position = vec3.fromValues(0, 0, -5);
     camera.rotation = vec3.fromValues(0, 0, 0);
 }
-
-function update(frameTime) {
-    const frameStep = frameTime / 1000;
-    const cameraSpeed = 10 * frameStep;
-    const rotateSpeed = 90 * frameStep;
-
-    const maxRotation = toRadian(360);
-
-    if (isKeyPressed("ArrowLeft")) {
-        camera.rotation[1] -= toRadian(rotateSpeed);
-
-        if (camera.rotation[1] < -maxRotation)
-            camera.rotation[1] += maxRotation;
-    }
-    if (isKeyPressed("ArrowRight")) {
-        camera.rotation[1] += toRadian(rotateSpeed);
-
-        if (camera.rotation[1] > maxRotation)
-            camera.rotation[1] -= maxRotation;
-    }
-    if (isKeyPressed("ArrowUp")) {
-        camera.rotation[0] -= toRadian(rotateSpeed);
-
-        if (camera.rotation[0] < -maxRotation)
-            camera.rotation[0] += maxRotation;
-    }
-    if (isKeyPressed("ArrowDown")) {
-        camera.rotation[0] += toRadian(rotateSpeed);
-        
-        if (camera.rotation[0] > maxRotation)
-            camera.rotation[0] -= maxRotation;
-    }
-
-    const [gamepadConnected, axes] = getGamepadAxes(0);
-    if (gamepadConnected && axes[3] != 0) {
-        camera.rotation[1] += toRadian(axes[3] * rotateSpeed);
-    }
-    if (gamepadConnected && axes[4] != 0) {
-        camera.rotation[0] += toRadian(axes[4] * rotateSpeed);
-    }
-
-    const cameraSpeedVectors = vec3.fromValues(cameraSpeed, cameraSpeed, cameraSpeed);
-    const cameraSpaceVectors = objectSpaceVectors(camera.rotation);
-
-    if (isKeyPressed("a")) {
-        const left = vec3.create();
-        vec3.multiply(left, cameraSpaceVectors.x, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, left);
-    }
-    if (isKeyPressed("d")) {
-        const right = vec3.create();
-        vec3.negate(right, cameraSpaceVectors.x);
-        vec3.multiply(right, right, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, right);
-    }
-    if (isKeyPressed("w")) {
-        const forward = vec3.create();
-        vec3.multiply(forward, cameraSpaceVectors.z, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, forward);
-    }
-    if (isKeyPressed("s")) {
-        const backward = vec3.create();
-        vec3.negate(backward, cameraSpaceVectors.z);
-        vec3.multiply(backward, backward, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, backward);
-    }
-    if (isKeyPressed(" ")) {
-        const up = vec3.create();
-        vec3.negate(up, cameraSpaceVectors.y);
-        vec3.multiply(up, up, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, up);
-    }
-    if (isKeyPressed("Control")) {
-        const down = vec3.create();
-        vec3.multiply(down, cameraSpaceVectors.y, cameraSpeedVectors);
-        vec3.add(camera.position, camera.position, down);
-    }
-
-    if (gamepadConnected && axes[0] != 0) {
-        const cameraSpeedFactor = axes[0] * cameraSpeed;
-        const right = vec3.create();
-        vec3.negate(right, cameraSpaceVectors.x);
-        vec3.multiply(right, right, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
-        vec3.add(camera.position, camera.position, right);
-    }
-    if (gamepadConnected && axes[1] != 0) {
-        const cameraSpeedFactor = axes[1] * cameraSpeed;
-        const backward = vec3.create();
-        vec3.negate(backward, cameraSpaceVectors.z);
-        vec3.multiply(backward, backward, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
-        vec3.add(camera.position, camera.position, backward);
-    }
-    if (gamepadConnected && axes[2] > 0) {
-        const cameraSpeedFactor = axes[2] * cameraSpeed;
-        const down = vec3.create();
-        vec3.multiply(down, cameraSpaceVectors.y, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
-        vec3.add(camera.position, camera.position, down);
-    }
-    if (gamepadConnected && axes[5] > 0) {
-        const cameraSpeedFactor = axes[5] * cameraSpeed;
-        const up = vec3.create();
-        vec3.negate(up, cameraSpaceVectors.y);
-        vec3.multiply(up, up, vec3.fromValues(cameraSpeedFactor, cameraSpeedFactor, cameraSpeedFactor));
-        vec3.add(camera.position, camera.position, up);
-    }
-
-    model.modelMatrix = transformationMatrix(model.position, model.rotation, model.scale);
-    camera.viewMatrix = transformationMatrix(camera.position, camera.rotation, vec3.fromValues(1, 1, 1));
-}
-
 
 
 // RENDER LOGIC
@@ -287,7 +188,7 @@ function draw() {
             depthLoadValue: 1.0,
             depthStoreOp: "store",
             stencilLoadValue: 0,
-            stencilStoreOp: "store"
+            stencilStoreOp: "store",
         },
     };
     const renderPass = commandEncoder.beginRenderPass(renderPassInfo);
@@ -296,7 +197,7 @@ function draw() {
     device.queue.writeBuffer(uniformBuffer, 0, modelViewProjectionMatrix);
 
     renderPass.setPipeline(pipeline);
-    renderPass.setVertexBuffer(0, model.buffers.positions);
+    renderPass.setVertexBuffer(0, model.buffers.vertex);
     renderPass.setVertexBuffer(1, model.buffers.normals);
     renderPass.setVertexBuffer(2, model.buffers.textureCoords);
     renderPass.setIndexBuffer(model.buffers.index, "uint32");
@@ -314,7 +215,8 @@ let frameTime = calcFrameTime(Date.now());
 function render() {
     frameTime = calcFrameTime(frameTime.time);
 
-    update(frameTime.ms);
+    state.update(frameTime.ms);
+
     draw();
 
     requestAnimationFrame(render);
@@ -326,5 +228,4 @@ setInterval(() => {
     fpsElement.innerHTML = `${Math.round(1000 / frameTime.ms)}fps ${frameTime.ms}ms`;
 }, 250);
 
-initInputs();
 requestAnimationFrame(render);

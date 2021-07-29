@@ -8,7 +8,6 @@ import { KeyboardInputComponent } from '../../webgpu/keyboard.js';
 import { calcFrameTime } from '../../webgpu/timeframe.js';
 import { loadResource } from '../../webgpu/resources.js';
 import { parseWaveFrontObject } from '../../webgpu/wavefront.js';
-import { UiComponent } from '../../webgpu/ui.js';
 import { EntityComponent } from '../../webgpu/entity.js';
 import { FirstPersonCameraComponent } from '../../webgpu/camera.js';
 import { GameState } from '../../webgpu/state.js';
